@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#1A1C1F;
+    --bg-1:#1E2023;
+    --bg-2:#242629;
+    --bg-3:#2B2E33;
+    --line:#333539;
+    --line-soft:#28292D;
+    --text-hi:#E9EAEC;
+    --text-mid:#9B9DA3;
+    --text-low:#616469;
+    --accent:#D7D8DA;
+    --accent-dim:#6E7075;
+    --accent-glow:rgba(215,216,218,0.25);
+    --teal:#B8BABD;
+    --red:#C7C8CA;
+    --blue:#B8BABD;
+    --js:#D7D8DA;
+    --html:#B8BABD;
+    --css:#9B9DA3;
+    --md:#9AA1B2;
+    --json:#B8BABD;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--bg-0);
+    font-family:'Inter',sans-serif;
+    color:var(--text-hi);
+    overflow:hidden;
+  }
+  #app{
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    width:100vw;
+  }
+
+  /* ---------- Tab bar ---------- */
+  #tabbar-wrap{
+    display:flex;
+    align-items:stretch;
+    background:var(--bg-1);
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+    height:42px;
+    user-select:none;
+  }
+  #tabbar{
+    display:flex;
+    align-items:stretch;
+    overflow-x:auto;
+    scrollbar-width:none;
+    flex:1;
+    min-width:0;
+  }
+  #tabbar::-webkit-scrollbar{display:none;}
+  .tab{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:0 10px 0 14px;
+    height:100%;
+    min-width:120px;
+    max-width:200px;
+    background:transparent;
+    border-right:1px solid var(--line-soft);
+    position:relative;
+    cursor:pointer;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12.5px;
+    color:var(--text-mid);
+    white-space:nowrap;
+    transition:background .12s ease,color .12s ease;
+  }
+  .tab:hover{background:var(--bg-2);color:var(--text-hi);}
+  .tab.active{
+    background:var(--bg-0);
+    color:var(--text-hi);
+  }
+  .tab.active::after{
+    content:"";
+    position:absolute;
+    left:0;right:0;bottom:-1px;
+    height:2px;
+    background:linear-gradient(90deg,var(--accent-dim),var(--accent));
+    box-shadow:0 0 8px var(--accent-glow);
+  }
+  .tab-dot{
+    width:7px;height:7px;border-radius:50%;
+    flex-shrink:0;
+  }
+  .tab-name{
+    overflow:hidden;
+    text-overflow:ellipsis;
+    flex:1;
+  }
+  .tab.dirty .tab-name::after{
+    content:"";
+  }
+  .tab-unsaved{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--text-mid);
+    flex-shrink:0;
+    display:none;
+  }
+  .tab.dirty .tab-unsaved{display:block;}
+  .tab.dirty .tab-close{display:none;}
+  .tab.dirty:hover .tab-unsaved{display:none;}
+  .tab.dirty:hover .tab-close{display:flex;}
+  .tab-close{
+    width:16px;height:16px;
+    border-radius:4px;
+    align-items:center;justify-content:center;
+    display:flex;
+    flex-shrink:0;
+    color:var(--text-low);
+    background:transparent;
+    border:none;
+    cursor:pointer;
+  }
+  .tab-close:hover{background:var(--bg-3);color:var(--text-hi);}
+
+  #new-tab-btn{
+    width:38px;
+    flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;
+    border:none;
+    border-left:1px solid var(--line-soft);
+    color:var(--text-mid);
+    cursor:pointer;
+    font-size:16px;
+    font-family:'Inter',sans-serif;
+  }
+  #new-tab-btn:hover{background:var(--bg-2);color:var(--accent);}
+
+  #tabbar-actions{
+    display:flex;
+    align-items:center;
+    padding:0 12px;
+    gap:10px;
+    border-left:1px solid var(--line);
+    flex-shrink:0;
+  }
+  .icon-btn{
+    background:transparent;
+    border:none;
+    color:var(--text-mid);
+    cursor:pointer;
+    width:26px;height:26px;
+    border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .12s ease,color .12s ease;
+  }
+  .icon-btn:hover{background:var(--bg-2);color:var(--accent);}
+  .icon-btn svg{width:15px;height:15px;}
+
+  /* ---------- Editor ---------- */
+  #editor-area{
+    flex:1;
+    min-height:0;
+    position:relative;
+  }
+  #monaco-container{
+    position:absolute;
+    inset:0;
+  }
+
+  /* ---------- Status bar ---------- */
+  #statusbar{
+    height:26px;
+    background:linear-gradient(90deg,#2B2E33,#1E2023);
+    border-top:1px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 12px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:#C7C8CA;
+    flex-shrink:0;
+    user-select:none;
+  }
+  #statusbar .left,#statusbar .right{
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  #statusbar span{opacity:0.9;}
+  #statusbar .lang-tag{
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    font-weight:600;
+  }
+
+  /* ---------- Empty state ---------- */
+  #empty-state{
+    position:absolute;inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    gap:12px;
+    color:var(--text-low);
+    font-family:'JetBrains Mono',monospace;
+  }
+  #empty-state.show{display:flex;}
+  #empty-state button{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    padding:8px 16px;
+    border-radius:6px;
+    border:1px solid var(--line);
+    background:var(--bg-2);
+    color:var(--text-hi);
+    cursor:pointer;
+  }
+  #empty-state button:hover{border-color:var(--accent-dim);color:var(--accent);}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="tabbar-wrap">
+    <div id="tabbar"></div>
+    <button id="new-tab-btn" title="New file">+</button>
+    <div id="tabbar-actions">
+      <button class="icon-btn" id="format-btn" title="Format document">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>
+      </button>
+      <button class="icon-btn" id="syringe-btn" title="Inject current tab into client">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l0 0c-1-1-1-2.5 0-3.4L15.6 5.6"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/><path d="m14 4 6 6"/></svg>
+      </button>
+      <button class="icon-btn" id="play-btn" title="Run current tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="editor-area">
+    <div id="monaco-container"></div>
+    <div id="empty-state">
+      <div>No files open</div>
+      <button id="empty-new-btn">New file</button>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <div class="left">
+      <span id="status-info">Ready</span>
+    </div>
+    <div class="right">
+      <span id="status-indent">Spaces: 2</span>
+      <span id="status-pos">Ln 1, Col 1</span>
+      <span class="lang-tag" id="status-lang">plaintext</span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script>
+const LANG_META = {
+  luau: { color: 'var(--accent)', ext: 'luau' },
+  plaintext: { color: 'var(--text-low)', ext: 'txt' }
+};
+
+const EXT_LANG = { luau: 'luau', lua: 'luau', txt: 'plaintext' };
+
+let files = [
+  {
+    id: 'f1', name: 'main.luau', lang: 'luau', dirty: false,
+    value:
+`print("Hello, world!")
+`
+  }
+];
+
+let activeId = files[0].id;
+let editor = null;
+let models = {};
+let counter = files.length;
+
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+
+require(['vs/editor/editor.main'], function () {
+  monaco.languages.register({ id: 'luau' });
+
+  monaco.languages.setLanguageConfiguration('luau', {
+    comments: { lineComment: '--', blockComment: ['--[[', ']]'] },
+    brackets: [['{', '}'], ['[', ']'], ['(', ')']],
+    autoClosingPairs: [
+      { open: '{', close: '}' }, { open: '[', close: ']' },
+      { open: '(', close: ')' }, { open: '"', close: '"' },
+      { open: "'", close: "'" }
+    ],
+    surroundingPairs: [
+      { open: '{', close: '}' }, { open: '[', close: ']' },
+      { open: '(', close: ')' }, { open: '"', close: '"' },
+      { open: "'", close: "'" }
+    ]
+  });
+
+  monaco.languages.setMonarchTokensProvider('luau', {
+    defaultToken: '',
+    tokenPostfix: '.luau',
+    keywords: [
+      'and','break','continue','do','else','elseif','end','export','false',
+      'for','function','goto','if','in','local','nil','not','or','repeat',
+      'return','then','true','until','while','type','typeof','self','game',
+      'workspace','script'
+    ],
+    typeKeywords: [
+      'any','string','number','boolean','table','nil','unknown','never',
+      'thread','userdata'
+    ],
+    operators: [
+      '+','-','*','/','%','^','#','==','~=','<=','>=','<','>','=',
+      '(',')','{','}','[',']',';',':',',','.','..','...','::','?'
+    ],
+    symbols: /[=><!~?:&|+\-*\/\^%.]+/,
+    tokenizer: {
+      root: [
+        [/[a-zA-Z_]\w*/, {
+          cases: {
+            '@keywords': 'keyword',
+            '@typeKeywords': 'type',
+            '@default': 'identifier'
+          }
+        }],
+        { include: '@whitespace' },
+        [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
+        [/0[xX][0-9a-fA-F]+/, 'number.hex'],
+        [/\d+/, 'number'],
+        [/"([^"\\]|\\.)*"/, 'string'],
+        [/'([^'\\]|\\.)*'/, 'string'],
+        [/\[(=*)\[/, { token: 'string', next: '@longstring' }],
+        [/@symbols/, { cases: { '@operators': 'operator', '@default': '' } }],
+      ],
+      whitespace: [
+        [/[ \t\r\n]+/, ''],
+        [/--\[\[/, 'comment', '@blockComment'],
+        [/--.*$/, 'comment'],
+      ],
+      blockComment: [
+        [/[^\]]+/, 'comment'],
+        [/\]\]/, 'comment', '@pop'],
+        [/./, 'comment'],
+      ],
+      longstring: [
+        [/[^\]]+/, 'string'],
+        [/\]\]/, 'string', '@pop'],
+        [/./, 'string'],
+      ],
+    }
+  });
+
+  monaco.editor.defineTheme('sleek-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '616469', fontStyle: 'italic' },
+      { token: 'keyword', foreground: 'D7D8DA' },
+      { token: 'string', foreground: 'B8BABD' },
+      { token: 'number', foreground: 'C7C8CA' },
+      { token: 'type', foreground: '9B9DA3' },
+    ],
+    colors: {
+      'editor.background': '#1A1C1F',
+      'editor.foreground': '#E9EAEC',
+      'editorLineNumber.foreground': '#42454A',
+      'editorLineNumber.activeForeground': '#D7D8DA',
+      'editor.lineHighlightBackground': '#1E2023',
+      'editorCursor.foreground': '#D7D8DA',
+      'editor.selectionBackground': '#333539',
+      'editorIndentGuide.background': '#28292D',
+      'editorIndentGuide.activeBackground': '#333539',
+      'editorWidget.background': '#242629',
+      'editorWidget.border': '#333539',
+      'editorSuggestWidget.background': '#242629',
+      'editorSuggestWidget.border': '#333539',
+      'editorSuggestWidget.selectedBackground': '#2B2E33',
+      'scrollbarSlider.background': '#33353988',
+      'scrollbarSlider.hoverBackground': '#45474D99',
+      'minimap.background': '#1A1C1F',
+    }
+  });
+
+  editor = monaco.editor.create(document.getElementById('monaco-container'), {
+    theme: 'sleek-dark',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: 13.5,
+    lineHeight: 22,
+    minimap: { enabled: true, scale: 1 },
+    smoothScrolling: true,
+    cursorBlinking: 'smooth',
+    cursorSmoothCaretAnimation: 'on',
+    padding: { top: 14 },
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    renderLineHighlight: 'all',
+    fontLigatures: true,
+  });
+
+  files.forEach(f => {
+    models[f.id] = monaco.editor.createModel(f.value, f.lang);
+  });
+
+  editor.onDidChangeModelContent(() => {
+    const f = files.find(x => x.id === activeId);
+    if (!f) return;
+    f.value = editor.getValue();
+    if (!f.dirty) {
+      f.dirty = true;
+      renderTabs();
+    }
+    emit('editor:change', { id: f.id, name: f.name, lang: f.lang, value: f.value });
+  });
+
+  editor.onDidChangeCursorPosition(e => {
+    document.getElementById('status-pos').textContent =
+      `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
+  });
+
+  openTab(activeId);
+  renderTabs();
+
+  document.getElementById('format-btn').addEventListener('click', () => {
+    editor.getAction('editor.action.formatDocument')?.run();
+  });
+});
+
+function guessLang(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  return EXT_LANG[ext] || 'plaintext';
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tabbar');
+  bar.innerHTML = '';
+  files.forEach(f => {
+    const meta = LANG_META[f.lang] || LANG_META.plaintext;
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (f.id === activeId ? ' active' : '') + (f.dirty ? ' dirty' : '');
+    tab.dataset.id = f.id;
+    tab.innerHTML = `
+      <span class="tab-dot" style="background:${meta.color}"></span>
+      <span class="tab-name">${escapeHtml(f.name)}</span>
+      <span class="tab-unsaved"></span>
+      <button class="tab-close" title="Close">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    `;
+    tab.addEventListener('click', (e) => {
+      if (e.target.closest('.tab-close')) return;
+      openTab(f.id);
+    });
+    tab.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(f.id);
+    });
+    bar.appendChild(tab);
+  });
+  const active = files.find(f => f.id === activeId);
+  const emptyState = document.getElementById('empty-state');
+  if (!active) {
+    emptyState.classList.add('show');
+    document.getElementById('status-info').textContent = 'No file open';
+    document.getElementById('status-lang').textContent = '—';
+  } else {
+    emptyState.classList.remove('show');
+  }
+}
+
+function openTab(id) {
+  activeId = id;
+  const f = files.find(x => x.id === id);
+  if (!f || !editor) { renderTabs(); return; }
+  editor.setModel(models[id]);
+  document.getElementById('status-lang').textContent = f.lang;
+  document.getElementById('status-info').textContent = f.name;
+  renderTabs();
+  editor.focus();
+  emit('editor:tabchange', { id: f.id, name: f.name, lang: f.lang, value: f.value });
+}
+
+function closeTab(id) {
+  const idx = files.findIndex(f => f.id === id);
+  if (idx === -1) return;
+  const f = files[idx];
+  if (f.dirty) {
+    const ok = confirm(`"${f.name}" has unsaved changes. Close anyway?`);
+    if (!ok) return;
+  }
+  models[id]?.dispose();
+  delete models[id];
+  files.splice(idx, 1);
+
+  if (activeId === id) {
+    if (files.length) {
+      const next = files[Math.max(0, idx - 1)];
+      activeId = next.id;
+      if (editor) editor.setModel(models[activeId]);
+      const meta = LANG_META[next.lang] || LANG_META.plaintext;
+      document.getElementById('status-lang').textContent = next.lang;
+      document.getElementById('status-info').textContent = next.name;
+    } else {
+      activeId = null;
+    }
+  }
+  renderTabs();
+  emit('editor:tabclose', { id: f.id, name: f.name });
+}
+
+function createTab() {
+  const name = prompt('File name', 'untitled-' + (counter + 1) + '.luau');
+  if (!name) return;
+  counter++;
+  const lang = guessLang(name);
+  const id = 'f' + Date.now();
+  const f = { id, name, lang, dirty: false, value: '' };
+  files.push(f);
+  if (window.monaco) {
+    models[id] = monaco.editor.createModel('', lang);
+  }
+  emit('editor:tabcreate', { id, name, lang, value: '' });
+  openTab(id);
+}
+
+document.getElementById('new-tab-btn').addEventListener('click', createTab);
+document.getElementById('empty-new-btn').addEventListener('click', createTab);
+
+document.getElementById('play-btn').addEventListener('click', () => {
+  const tab = getCurrentTab();
+  if (!tab) { flashStatus('No file open'); return; }
+  flashStatus('Running ' + tab.name);
+  emit('editor:play', tab);
+  sendToHost('play', tab);
+});
+
+document.getElementById('syringe-btn').addEventListener('click', () => {
+  const tab = getCurrentTab();
+  if (!tab) { flashStatus('No file open'); return; }
+  flashStatus('Injected ' + tab.name);
+  emit('editor:syringe', tab);
+  sendToHost('syringe', tab);
+});
+
+/* ---------- Host bridge ----------
+   Sends a {type, payload} message out to whatever is embedding this page.
+   - Inside a WebView2 host: window.chrome.webview.postMessage(...)
+     Read it in .NET with: webView1.CoreWebView2.WebMessageReceived += (s, e) => {
+       var json = e.WebMessageAsJson; // or e.TryGetWebMessageAsString()
+     };
+   - Inside a plain browser tab: falls back to a window CustomEvent
+     (already emitted separately by emit()) plus a console log so you can
+     see it while testing outside the host app.
+------------------------------------- */
+function sendToHost(type, payload) {
+  const message = { type, payload, ts: Date.now() };
+  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === 'function') {
+    window.chrome.webview.postMessage(message);
+  } else {
+    console.log('[editor:sendToHost]', message);
+  }
+}
+
+let flashTimer = null;
+function flashStatus(msg) {
+  const el = document.getElementById('status-info');
+  clearTimeout(flashTimer);
+  const prev = activeId ? (files.find(f => f.id === activeId)?.name || '') : '';
+  el.textContent = msg;
+  flashTimer = setTimeout(() => { el.textContent = prev || 'No file open'; }, 1400);
+}
+
+function emit(name, detail) {
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+/* ---------- Public signal API ----------
+   window.getCurrentTabText()   -> string | null
+   window.getCurrentTab()       -> {id,name,lang,value,dirty} | null
+   window.getTabText(id)        -> string | null
+   window.getAllTabs()          -> [{id,name,lang,value,dirty}]
+   window.setText(text, id?)    -> boolean  (writes text into a tab; defaults to the active tab)
+   Events on window: 'editor:change', 'editor:tabchange',
+     'editor:tabclose', 'editor:tabcreate',
+     'editor:play', 'editor:syringe', 'editor:settext'
+   Outbound to host (WebView2): sendToHost('play'|'syringe', payload)
+------------------------------------------ */
+function getCurrentTabText() {
+  if (!activeId) return null;
+  if (editor) return editor.getValue();
+  const f = files.find(x => x.id === activeId);
+  return f ? f.value : null;
+}
+
+function getCurrentTab() {
+  const f = files.find(x => x.id === activeId);
+  if (!f) return null;
+  return { id: f.id, name: f.name, lang: f.lang, value: editor ? editor.getValue() : f.value, dirty: f.dirty };
+}
+
+function getTabText(id) {
+  if (id === activeId && editor) return editor.getValue();
+  const f = files.find(x => x.id === id);
+  return f ? f.value : null;
+}
+
+function getAllTabs() {
+  return files.map(f => ({
+    id: f.id, name: f.name, lang: f.lang,
+    value: f.id === activeId && editor ? editor.getValue() : f.value,
+    dirty: f.dirty
+  }));
+}
+
+function setText(text, id) {
+  const targetId = id || activeId;
+  const f = files.find(x => x.id === targetId);
+  if (!f) return false;
+  f.value = text;
+  if (models[targetId]) {
+    models[targetId].setValue(text);
+  }
+  if (targetId === activeId && editor && editor.getModel() !== models[targetId]) {
+    editor.setValue(text);
+  }
+  renderTabs();
+  emit('editor:settext', { id: f.id, name: f.name, lang: f.lang, value: text });
+  return true;
+}
+
+window.getCurrentTabText = getCurrentTabText;
+window.getCurrentTab = getCurrentTab;
+window.getTabText = getTabText;
+window.getAllTabs = getAllTabs;
+window.setText = setText;
+
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === 'w') {
+    e.preventDefault();
+    if (activeId) closeTab(activeId);
+  }
+  if (mod && e.key.toLowerCase() === 't') {
+    e.preventDefault();
+    createTab();
+  }
+  if (mod && !e.shiftKey && e.key === 'Tab') {
+    e.preventDefault();
+    cycleTab(1);
+  }
+  if (mod && e.shiftKey && e.key === 'Tab') {
+    e.preventDefault();
+    cycleTab(-1);
+  }
+  if (mod && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    const f = files.find(x => x.id === activeId);
+    if (f) { f.dirty = false; renderTabs(); }
+  }
+});
+
+function cycleTab(dir) {
+  if (!files.length) return;
+  const idx = files.findIndex(f => f.id === activeId);
+  const next = (idx + dir + files.length) % files.length;
+  openTab(files[next].id);
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>
